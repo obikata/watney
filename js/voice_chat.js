@@ -49,10 +49,12 @@ function startVoiceChat() {
         voiceChatWs.onmessage = function (event) {
             var data = JSON.parse(event.data);
 
-            if (data.type === 'response.audio.delta') {
+            if (data.type === 'response.output_audio.delta') {
                 playAudioChunk(data.delta);
-            } else if (data.type === 'response.audio_transcript.delta') {
+            } else if (data.type === 'response.output_audio_transcript.delta') {
                 appendTranscript(data.delta, 'ai');
+            } else if (data.type === 'response.output_audio_transcript.done') {
+                // Final transcript received, add line break for next message
             } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
                 setTranscript(data.transcript, 'user');
             } else if (data.type === 'error') {
