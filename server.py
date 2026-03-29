@@ -128,16 +128,13 @@ def createSSLContext(homePath):
     print('Using TLS with keys in {!r}'.format(homePath))
     chain_pem = os.path.join(homePath, 'cert.pem')
     key_pem = os.path.join(homePath, 'key.pem')
-    sslctx = ssl.create_default_context()
+    sslctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 
     try:
         sslctx.load_cert_chain(chain_pem, keyfile=key_pem)
     except FileNotFoundError:
         print("Certificates not found, did you run generate_cert.sh?")
         sys.exit(1)
-    # FIXME
-    sslctx.check_hostname = False
-    sslctx.verify_mode = ssl.CERT_NONE
     return sslctx
 
 runners = []
