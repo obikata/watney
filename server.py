@@ -181,7 +181,11 @@ if __name__ == "__main__":
 
     tts = TTSSpeaker(config, alsa, audioManager)
 
-    powerPlant = PowerPlant(config)
+    try:
+        powerPlant = PowerPlant(config)
+    except OSError:
+        print("PowerPlant not found on I2C bus - running without battery monitoring")
+        powerPlant = None
 
     startupController = StartupSequenceController(config, servoController, lightsController, tts)
 

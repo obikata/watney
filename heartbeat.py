@@ -92,7 +92,13 @@ class Heartbeat:
 
             cpuIdle = psutil.cpu_percent()
 
-            batteryInfo = self.powerPlant.getBatteryInfo()
+            if self.powerPlant:
+                batteryInfo = self.powerPlant.getBatteryInfo()
+                batteryPercent = batteryInfo[0]
+                batteryCharging = batteryInfo[1]
+            else:
+                batteryPercent = -1
+                batteryCharging = False
 
             return {
                 "SSID": ssid,
@@ -101,8 +107,8 @@ class Heartbeat:
                 "Volume": volume,
                 "CPU": cpuIdle,
                 "Lights": self.lightsController.lightsStatus,
-                "BatteryPercent": batteryInfo[0],
-                "BatteryCharging": batteryInfo[1],
+                "BatteryPercent": batteryPercent,
+                "BatteryCharging": batteryCharging,
             }
         except Exception as ex:
             print(str(ex), file=sys.stderr)
