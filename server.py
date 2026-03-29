@@ -123,40 +123,53 @@ async def voiceChatProxy(request):
     ws_browser = web.WebSocketResponse()
     await ws_browser.prepare(request)
 
+    session = None
+    ws_xai = None
     try:
         session = aiohttp.ClientSession()
+        print(f"Voice chat: connecting to xAI...")
         ws_xai = await session.ws_connect(
             "wss://api.x.ai/v1/realtime",
             headers={"Authorization": f"Bearer {apiKey}"}
         )
+        print(f"Voice chat: connected to xAI")
 
         await ws_xai.send_json({
             "type": "session.update",
             "session": {"voice": voice, "instructions": instructions}
         })
+        print(f"Voice chat: session.update sent")
 
         async def browser_to_xai():
             async for msg in ws_browser:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    await ws_xai.send_str(msg.data)
+                    if not ws_xai.closed:
+                        await ws_xai.send_str(msg.data)
                 elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                     break
+            print("Voice chat: browser disconnected")
 
         async def xai_to_browser():
             async for msg in ws_xai:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    await ws_browser.send_str(msg.data)
+                    if not ws_browser.closed:
+                        await ws_browser.send_str(msg.data)
                 elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                    print(f"Voice chat: xAI connection closed/error: {msg.type}")
                     break
+            print("Voice chat: xAI disconnected")
 
         await asyncio.gather(browser_to_xai(), xai_to_browser())
 
     except Exception as e:
-        print(f"Voice chat error: {e}")
+        print(f"Voice chat error: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        if not ws_xai.closed:
+        if ws_xai and not ws_xai.closed:
             await ws_xai.close()
-        await session.close()
+        if session:
+            await session.close()
         if not ws_browser.closed:
             await ws_browser.close()
 
