@@ -112,6 +112,9 @@ pip3 install --break-system-packages aiohttp apa102-pi psutil pyalsaaudio smbus
 # Watneyリポジトリのクローン
 cd /home/pi
 git clone https://github.com/obikata/watney.git
+cd /home/pi/watney
+git checkout feature/bookworm-support
+cd /home/pi
 cp /home/pi/watney/key.pem /home/pi
 cp /home/pi/watney/cert.pem /home/pi
 
@@ -122,7 +125,7 @@ sudo systemctl enable watney
 
 ## 5. スワップ追加
 
-Pi 3A+ は RAM 512MB のため、Mimic や Janus のビルドでメモリ不足になる。事前にスワップを追加:
+Pi 3A+ は RAM 512MB のため、Janus のビルドでメモリ不足になる。事前にスワップを追加:
 
 ```bash
 sudo fallocate -l 1G /swapfile
@@ -146,10 +149,11 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
 ```bash
 sudo apt-get -y install espeak
-
-# rover.conf の TTSCommand を espeak に変更
-sed -i 's|TTSCommand=mimic -voice slt --setf int_f0_target_mean=90 -t {}|TTSCommand=espeak -v en "{}"|' /home/pi/watney/rover.conf
 ```
+
+> 注: feature/bookworm-support ブランチでは rover.conf の TTSCommand が既に espeak に変更済み。
+> masterブランチを使う場合は手動で変更が必要:
+> `sed -i 's|TTSCommand=mimic -voice slt --setf int_f0_target_mean=90 -t {}|TTSCommand=espeak -v en "{}"|' /home/pi/watney/rover.conf`
 
 ## 7. Janus WebRTCサーバー ビルド・インストール
 
