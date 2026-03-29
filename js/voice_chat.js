@@ -55,8 +55,13 @@ function startVoiceChat() {
                 voiceChatPlaybackTime = 0;
                 voiceChatAiSpeaking = true;
             } else if (data.type === 'response.done') {
-                // Resume mic after AI finishes speaking
-                setTimeout(function() { voiceChatAiSpeaking = false; }, 500);
+                // Resume mic after AI finishes speaking + clear stale audio
+                setTimeout(function() {
+                    voiceChatAiSpeaking = false;
+                    if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
+                        voiceChatWs.send(JSON.stringify({type: 'input_audio_buffer.clear'}));
+                    }
+                }, 500);
             } else if (data.type === 'response.output_audio.delta') {
                 playAudioChunk(data.delta);
             } else if (data.type === 'response.output_audio_transcript.delta') {
