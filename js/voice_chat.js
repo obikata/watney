@@ -4,6 +4,7 @@ var voiceChatAudioContext = null;
 var voiceChatMediaStream = null;
 var voiceChatProcessor = null;
 var voiceChatPlaybackTime = 0;
+var voiceChatAiSpeaking = false;
 
 var TARGET_SAMPLE_RATE = 24000;
 
@@ -29,7 +30,7 @@ function startVoiceChat() {
             voiceChatProcessor = voiceChatAudioContext.createScriptProcessor(4096, 1, 1);
 
             voiceChatProcessor.onaudioprocess = function (e) {
-                if (!voiceChatActive || !voiceChatWs || voiceChatWs.readyState !== WebSocket.OPEN) return;
+                if (!voiceChatActive || !voiceChatWs || voiceChatWs.readyState !== WebSocket.OPEN || voiceChatAiSpeaking) return;
 
                 var inputData = e.inputBuffer.getChannelData(0);
                 var resampled = resampleAudio(inputData, voiceChatAudioContext.sampleRate, TARGET_SAMPLE_RATE);
@@ -52,6 +53,10 @@ function startVoiceChat() {
             if (data.type === 'response.created') {
                 // Reset playback time for new response
                 voiceChatPlaybackTime = 0;
+                voiceChatAiSpeaking = true;
+            } else if (data.type === 'response.done') {
+                // Resume mic after AI finishes speaking
+                setTimeout(function() { voiceChatAiSpeaking = false; }, 500);
             } else if (data.type === 'response.output_audio.delta') {
                 playAudioChunk(data.delta);
             } else if (data.type === 'response.output_audio_transcript.delta') {
@@ -100,6 +105,7 @@ function stopVoiceChat() {
         voiceChatAudioContext = null;
     }
     voiceChatPlaybackTime = 0;
+    voiceChatAiSpeaking = false;
 
     syncVoiceChatUI();
 }
