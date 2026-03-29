@@ -49,7 +49,10 @@ function startVoiceChat() {
         voiceChatWs.onmessage = function (event) {
             var data = JSON.parse(event.data);
 
-            if (data.type === 'response.output_audio.delta') {
+            if (data.type === 'response.created') {
+                // Reset playback time for new response
+                voiceChatPlaybackTime = 0;
+            } else if (data.type === 'response.output_audio.delta') {
                 playAudioChunk(data.delta);
             } else if (data.type === 'response.output_audio_transcript.delta') {
                 appendTranscript(data.delta, 'ai');
@@ -115,9 +118,12 @@ function playAudioChunk(base64Audio) {
     source.connect(voiceChatAudioContext.destination);
 
     var now = voiceChatAudioContext.currentTime;
-    var startTime = Math.max(now, voiceChatPlaybackTime);
-    source.start(startTime);
-    voiceChatPlaybackTime = startTime + audioBuffer.duration;
+    // Reset playback time if it's fallen behind
+    if (voiceChatPlaybackTime < now) {
+        voiceChatPlaybackTime = now;
+    }
+    source.start(voiceChatPlaybackTime);
+    voiceChatPlaybackTime += audioBuffer.duration;
 }
 
 // --- Audio conversion utilities ---
