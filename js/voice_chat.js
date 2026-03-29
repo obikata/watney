@@ -26,9 +26,20 @@ function startVoiceChat() {
             voiceChatActive = true;
             syncVoiceChatUI();
 
+            // Greeting on start
+            setTimeout(function() {
+                if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
+                    voiceChatWs.send(JSON.stringify({
+                        type: 'conversation.item.create',
+                        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'あなたの名前と簡単な自己紹介をしてください。' }] }
+                    }));
+                    voiceChatWs.send(JSON.stringify({ type: 'response.create' }));
+                }
+            }, 500);
+
             var source = voiceChatAudioContext.createMediaStreamSource(stream);
             var gainNode = voiceChatAudioContext.createGain();
-            gainNode.gain.value = 3.0;
+            gainNode.gain.value = 8.0;
             voiceChatProcessor = voiceChatAudioContext.createScriptProcessor(4096, 1, 1);
 
             voiceChatProcessor.onaudioprocess = function (e) {
