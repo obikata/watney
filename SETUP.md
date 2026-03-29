@@ -41,17 +41,13 @@ USB Ethernetアダプタ使用時。PiとPCを直接LANケーブルで接続す�
 
 **Pi側:**
 ```bash
-sudo nmcli con mod "netplan-eth0" ipv4.method manual ipv4.addresses 192.168.1.100/24 ipv4.gateway 192.168.1.1 ipv4.dns "192.168.1.1 8.8.8.8"
+sudo nmcli con mod "netplan-eth0" ipv4.method manual ipv4.addresses 192.168.1.100/24 ipv4.dns "192.168.1.1 8.8.8.8"
+sudo nmcli con mod "netplan-eth0" ipv4.never-default yes
 sudo nmcli con down "netplan-eth0" && sudo nmcli con up "netplan-eth0"
 ```
 
 > 注: 接続名は `nmcli con show` で確認。環境により異なる場合がある。
-
-**重要: 有線LANの固定IP設定後、デフォルトルートがeth0に切り替わりインターネット接続が失われる場合がある。**
-その場合、WiFi側のルートを優先に戻す:
-```bash
-sudo ip route del default via 192.168.1.1 dev eth0
-```
+> `ipv4.never-default yes` により eth0 がデフォルトルートにならず、WiFi経由のインターネット接続が維持される。
 
 **PC側 (Windows):**
 - イーサネットアダプタのIPv4設定:
