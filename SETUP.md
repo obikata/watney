@@ -234,3 +234,6 @@ sudo reboot
 | ネットワーク管理 | `dhcpcd` | `NetworkManager (nmcli)` |
 | スワップ設定 | `dphys-swapfile` | 手動で `/swapfile` 作成 |
 | TTS | mimic1 (ソースビルド) | espeak (aptインストール) に変更 |
+| 映像配信 | `raspivid` | `libcamera-vid` に変更 |
+| SSL | `ssl.create_default_context()` | `ssl.SSLContext(PROTOCOL_TLS_SERVER)` に変更 |
+| PowerPlant | I2C未接続でクラッシュ | I2C未接続時はスキップ |
