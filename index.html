@@ -17,6 +17,7 @@
     <script type="text/javascript" src="js/janus.js"></script>
     <script type="text/javascript" src="js/watney_janus.js"></script>
     <script type="text/javascript" src="js/watney.js"></script>
+    <script type="text/javascript" src="js/voice_chat.js"></script>
 </head>
 
 <body style="margin: 0; background-color: black">
@@ -36,6 +37,9 @@
             </div>
             <div id="micButton" title="Local mic on/off. Push-to-talk (V)" class="wButton">
                 <i class="material-icons">mic_none</i>
+            </div>
+            <div id="voiceChatButton" title="Voice Chat with Grok (G)" class="wButton" onclick="startVoiceChat()">
+                <i class="material-icons">record_voice_over</i>
             </div>
             <div id="volumeSlider" class="wButton noHover" title="Remote Volume (-/+)">
                 <i class="material-icons">
@@ -71,6 +75,7 @@
     Z: look down
     S: Text to speech
     V: Push-to-talk
+    G: Voice Chat (Grok)
     L: Headlights</pre>
     </div>
     <div id="wifiInfo" tabindex="-1">
@@ -97,6 +102,9 @@
     </div>
     <div id="ttsSection" style="display: none;">
         <input type="text" id="ttsInput" placeholder="Enter to send, ESC to cancel" />
+    </div>
+    <div id="voiceChatSection" style="display: none;">
+        <div id="voiceChatTranscript"></div>
     </div>
     <div id="reconnecting" style="display: none;">
        Reconnecting...

@@ -15,6 +15,8 @@ import ssl
 import sys
 from externalrunner import ExternalProcess
 import asyncio
+import aiohttp
+import json
 from januseventhandler import JanusEventHandler
 from tts import TTSSpeaker
 from startupSequence import StartupSequenceController
@@ -33,6 +35,7 @@ audioManager = None
 audioManagerThread = None
 janusEventHandler = None
 offCharger = None
+xaiConfig = None
 
 @routes.get("/")
 async def getPageHTML(request):
@@ -105,6 +108,61 @@ async def onLights(request):
         lightsController.lightsOff()
     return web.Response(text="OK")
 
+@routes.get("/voiceChat")
+async def voiceChatProxy(request):
+    if not xaiConfig or not xaiConfig.getboolean("Enabled", fallback=False):
+        return web.Response(status=403, text="Voice chat not enabled")
+
+    apiKey = xaiConfig.get("ApiKey", "")
+    if not apiKey:
+        return web.Response(status=403, text="API key not configured")
+
+    voice = xaiConfig.get("Voice", "Talia")
+    instructions = xaiConfig.get("Instructions", "You are Watney, a friendly rover.")
+
+    ws_browser = web.WebSocketResponse()
+    await ws_browser.prepare(request)
+
+    try:
+        session = aiohttp.ClientSession()
+        ws_xai = await session.ws_connect(
+            "wss://api.x.ai/v1/realtime",
+            headers={"Authorization": f"Bearer {apiKey}"}
+        )
+
+        await ws_xai.send_json({
+            "type": "session.update",
+            "session": {"voice": voice, "instructions": instructions}
+        })
+
+        async def browser_to_xai():
+            async for msg in ws_browser:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    await ws_xai.send_str(msg.data)
+                elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                    break
+
+        async def xai_to_browser():
+            async for msg in ws_xai:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    await ws_browser.send_str(msg.data)
+                elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                    break
+
+        await asyncio.gather(browser_to_xai(), xai_to_browser())
+
+    except Exception as e:
+        print(f"Voice chat error: {e}")
+    finally:
+        if not ws_xai.closed:
+            await ws_xai.close()
+        await session.close()
+        if not ws_browser.closed:
+            await ws_browser.close()
+
+    return ws_browser
+
+
 async def onJanusEvent(request):
     try:
         eventObj = await request.json()
@@ -163,6 +221,7 @@ if __name__ == "__main__":
     config.read(os.path.join(homePath, "rover.conf"))
     audioConfig = config["AUDIO"]
     videoConfig = config["VIDEO"]
+    xaiConfig = config["XAI"] if config.has_section("XAI") else None
 
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(loopExceptionHandler)

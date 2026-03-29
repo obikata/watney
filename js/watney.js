@@ -133,6 +133,12 @@ $(document).ready(function () {
                 return;
             }
 
+            if (event.keyCode == 71) {
+                startVoiceChat();
+                event.preventDefault();
+                return;
+            }
+
             if (event.keyCode == 76) {
                 toggleLights();
             }
