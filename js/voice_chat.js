@@ -27,12 +27,23 @@ function startVoiceChat() {
             syncVoiceChatUI();
 
             var source = voiceChatAudioContext.createMediaStreamSource(stream);
+            var gainNode = voiceChatAudioContext.createGain();
+            gainNode.gain.value = 3.0;
             voiceChatProcessor = voiceChatAudioContext.createScriptProcessor(4096, 1, 1);
 
             voiceChatProcessor.onaudioprocess = function (e) {
                 if (!voiceChatActive || !voiceChatRecording || !voiceChatWs || voiceChatWs.readyState !== WebSocket.OPEN) return;
 
                 var inputData = e.inputBuffer.getChannelData(0);
+
+                // Check if there's actual audio (not silence)
+                var maxLevel = 0;
+                for (var i = 0; i < inputData.length; i++) {
+                    var abs = Math.abs(inputData[i]);
+                    if (abs > maxLevel) maxLevel = abs;
+                }
+                if (maxLevel > 0.01) voiceChatHasAudio = true;
+
                 var resampled = resampleAudio(inputData, voiceChatAudioContext.sampleRate, TARGET_SAMPLE_RATE);
                 var pcm16 = float32ToPcm16(resampled);
                 var base64 = arrayBufferToBase64(pcm16.buffer);
@@ -43,7 +54,8 @@ function startVoiceChat() {
                 }));
             };
 
-            source.connect(voiceChatProcessor);
+            source.connect(gainNode);
+            gainNode.connect(voiceChatProcessor);
             voiceChatProcessor.connect(voiceChatAudioContext.destination);
         };
 
@@ -105,9 +117,12 @@ function stopVoiceChat() {
     syncVoiceChatUI();
 }
 
+var voiceChatHasAudio = false;
+
 function voiceChatStartRecording() {
     if (!voiceChatActive || voiceChatRecording) return;
     voiceChatRecording = true;
+    voiceChatHasAudio = false;
     if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
         voiceChatWs.send(JSON.stringify({type: 'input_audio_buffer.clear'}));
     }
@@ -118,9 +133,11 @@ function voiceChatStopRecording() {
     if (!voiceChatActive || !voiceChatRecording) return;
     voiceChatRecording = false;
     $("#voiceChatButton").removeClass("recording");
-    if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
+    if (voiceChatHasAudio && voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
         voiceChatWs.send(JSON.stringify({type: 'input_audio_buffer.commit'}));
         voiceChatWs.send(JSON.stringify({type: 'response.create'}));
+    } else if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
+        voiceChatWs.send(JSON.stringify({type: 'input_audio_buffer.clear'}));
     }
 }
 
