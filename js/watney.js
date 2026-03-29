@@ -139,6 +139,12 @@ $(document).ready(function () {
                 return;
             }
 
+            if (event.keyCode == 32 && voiceChatActive) {
+                voiceChatStartRecording();
+                event.preventDefault();
+                return;
+            }
+
             if (event.keyCode == 76) {
                 toggleLights();
             }
@@ -177,6 +183,12 @@ $(document).ready(function () {
 
     $(document).keyup(function (event) {
         if (!$("#ttsSection").is(":visible")) {
+            if (event.keyCode == 32 && voiceChatActive) {
+                voiceChatStopRecording();
+                event.preventDefault();
+                return;
+            }
+
             if (event.keyCode == 86) {
                 mute();
                 event.preventDefault();

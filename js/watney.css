@@ -151,6 +151,10 @@ div#voiceChatButton.active {
     background-color: rgba(76, 175, 80, 0.6);
 }
 
+div#voiceChatButton.recording {
+    background-color: rgba(244, 67, 54, 0.8);
+}
+
 div#voiceChatSection {
     position: fixed;
     bottom: 120px;
