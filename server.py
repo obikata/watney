@@ -136,7 +136,19 @@ async def voiceChatProxy(request):
 
         await ws_xai.send_json({
             "type": "session.update",
-            "session": {"voice": voice, "instructions": instructions}
+            "session": {
+                "voice": voice,
+                "instructions": instructions,
+                "modalities": ["text", "audio"],
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "turn_detection": {
+                    "type": "server_vad"
+                },
+                "input_audio_transcription": {
+                    "model": "grok-2-latest"
+                }
+            }
         })
         print(f"Voice chat: session.update sent")
 
