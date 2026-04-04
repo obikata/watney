@@ -108,6 +108,44 @@ async def onLights(request):
         lightsController.lightsOff()
     return web.Response(text="OK")
 
+@routes.post("/testVision")
+async def testVision(request):
+    if not xaiConfig:
+        return web.json_response({"error": "XAI not configured"}, status=403)
+    apiKey = xaiConfig.get("ApiKey", "")
+    if not apiKey:
+        return web.json_response({"error": "API key not configured"}, status=403)
+
+    body = await request.json()
+    image_base64 = body.get("image", "")
+    if not image_base64:
+        return web.json_response({"error": "No image provided"}, status=400)
+
+    try:
+        async with aiohttp.ClientSession() as vsession:
+            async with vsession.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {apiKey}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "grok-2-vision-latest",
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                            {"type": "text", "text": "何が映っていますか？日本語で簡潔に説明してください。"}
+                        ]
+                    }]
+                }
+            ) as resp:
+                result = await resp.json()
+                return web.json_response(result)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 @routes.get("/voiceChat")
 async def voiceChatProxy(request):
     if not xaiConfig or not xaiConfig.getboolean("Enabled", fallback=False):
