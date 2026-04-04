@@ -73,7 +73,11 @@ function startVoiceChat() {
         voiceChatWs.onmessage = function (event) {
             var data = JSON.parse(event.data);
 
-            if (data.type === 'response.created') {
+            if (data.type === 'snapshot_request') {
+                // Server requesting a camera snapshot
+                captureSnapshot();
+                return;
+            } else if (data.type === 'response.created') {
                 voiceChatPlaybackTime = 0;
                 voiceChatCurrentAiMsg = null;
             } else if (data.type === 'response.output_audio.delta') {
@@ -152,6 +156,26 @@ function voiceChatStopRecording() {
     } else if (voiceChatWs && voiceChatWs.readyState === WebSocket.OPEN) {
         voiceChatWs.send(JSON.stringify({type: 'input_audio_buffer.clear'}));
     }
+}
+
+function captureSnapshot() {
+    var video = document.getElementById('vid');
+    if (!video || !voiceChatWs || voiceChatWs.readyState !== WebSocket.OPEN) {
+        voiceChatWs.send(JSON.stringify({type: 'snapshot_result', image: ''}));
+        return;
+    }
+
+    var canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, 640, 480);
+
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    var base64 = dataUrl.split(',')[1];
+
+    voiceChatWs.send(JSON.stringify({type: 'snapshot_result', image: base64}));
+    appendTranscript('[Camera snapshot taken]', 'system');
 }
 
 function playAudioChunk(base64Audio) {

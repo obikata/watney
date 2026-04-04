@@ -138,30 +138,120 @@ async def voiceChatProxy(request):
             "type": "session.update",
             "session": {
                 "voice": voice,
-                "instructions": instructions,
+                "instructions": instructions + " You have a camera. When the conversation implies you should look at something (e.g. searching for objects, describing surroundings, identifying things), use the capture_image tool autonomously. Do not ask permission to look - just do it naturally.",
                 "modalities": ["text", "audio"],
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "turn_detection": None,
                 "input_audio_transcription": {
                     "model": "grok-2-latest"
-                }
+                },
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "capture_image",
+                        "description": "Capture a photo from Watney's onboard camera and analyze what is visible. Use this when the conversation requires visual information.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "reason": {
+                                    "type": "string",
+                                    "description": "Why you are looking (e.g. 'looking for a wallet', 'checking surroundings')"
+                                }
+                            },
+                            "required": ["reason"]
+                        }
+                    }
+                ]
             }
         })
         print(f"Voice chat: session.update sent")
 
+        pending_snapshot = asyncio.Future()
+
+        async def analyze_image(image_base64, reason):
+            """Send image to Grok Vision API for analysis"""
+            try:
+                async with aiohttp.ClientSession() as vsession:
+                    async with vsession.post(
+                        "https://api.x.ai/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {apiKey}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "grok-2-vision-latest",
+                            "messages": [{
+                                "role": "user",
+                                "content": [
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                                    {"type": "text", "text": f"あなたはWatneyというローバーロボットのカメラです。今カメラに映っているものを日本語で簡潔に説明してください。目的: {reason}"}
+                                ]
+                            }]
+                        }
+                    ) as resp:
+                        result = await resp.json()
+                        if "choices" in result:
+                            return result["choices"][0]["message"]["content"]
+                        else:
+                            print(f"Vision API unexpected response: {result}")
+                            return f"画像分析に失敗しました: {result.get('error', {}).get('message', 'unknown error')}"
+            except Exception as e:
+                print(f"Vision API error: {e}")
+                return f"画像分析に失敗しました: {e}"
+
         async def browser_to_xai():
+            nonlocal pending_snapshot
             async for msg in ws_browser:
                 if msg.type == aiohttp.WSMsgType.TEXT:
-                    if not ws_xai.closed:
+                    data = json.loads(msg.data)
+                    # Handle snapshot response from browser
+                    if data.get("type") == "snapshot_result":
+                        if not pending_snapshot.done():
+                            pending_snapshot.set_result(data.get("image", ""))
+                    elif not ws_xai.closed:
                         await ws_xai.send_str(msg.data)
                 elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                     break
             print("Voice chat: browser disconnected")
 
         async def xai_to_browser():
+            nonlocal pending_snapshot
             async for msg in ws_xai:
                 if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+
+                    # Intercept function calls
+                    if data.get("type") == "response.function_call_arguments.done":
+                        call_id = data.get("call_id")
+                        func_name = data.get("name")
+                        args = json.loads(data.get("arguments", "{}"))
+                        print(f"Voice chat: function call '{func_name}' args={args}")
+
+                        if func_name == "capture_image":
+                            reason = args.get("reason", "observation")
+                            # Request snapshot from browser
+                            pending_snapshot = asyncio.get_event_loop().create_future()
+                            await ws_browser.send_json({"type": "snapshot_request"})
+
+                            try:
+                                image_base64 = await asyncio.wait_for(pending_snapshot, timeout=5)
+                                result = await analyze_image(image_base64, reason)
+                            except asyncio.TimeoutError:
+                                result = "カメラからの画像取得がタイムアウトしました"
+
+                            print(f"Vision result: {result[:80]}...")
+                            await ws_xai.send_json({
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "function_call_output",
+                                    "call_id": call_id,
+                                    "output": result
+                                }
+                            })
+                            await ws_xai.send_json({"type": "response.create"})
+
+                    # Forward all messages to browser
                     if not ws_browser.closed:
                         await ws_browser.send_str(msg.data)
                 elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
