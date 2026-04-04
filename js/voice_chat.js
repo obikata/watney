@@ -75,6 +75,7 @@ function startVoiceChat() {
 
             if (data.type === 'response.created') {
                 voiceChatPlaybackTime = 0;
+                voiceChatCurrentAiMsg = null;
             } else if (data.type === 'response.output_audio.delta') {
                 playAudioChunk(data.delta);
             } else if (data.type === 'response.output_audio_transcript.delta') {
