@@ -218,6 +218,42 @@ sudo reboot
 
 再起動後、ブラウザで `https://<PiのIP>:5000` にアクセスして動作確認。
 
+## 11. Grok Voice Chat 設定 (任意)
+
+xAI の Realtime API を使った音声チャット機能。カメラ画像認識にも対応。
+
+### APIキーの取得
+
+1. [console.x.ai](https://console.x.ai) にアクセスしてアカウント作成
+2. APIキーを生成（**Realtime** と **Chat** の両方の権限を付与すること）
+
+### 設定
+
+```bash
+sed -i 's/^ApiKey=$/ApiKey=YOUR_XAI_API_KEY/' /home/pi/watney/rover.conf
+sed -i 's/^Enabled=False$/Enabled=True/' /home/pi/watney/rover.conf
+sudo systemctl restart watney
+```
+
+`YOUR_XAI_API_KEY` を実際のAPIキーに置き換えてください。
+
+> 注: APIキーはリポジトリにコミットしないこと。GitHubのPush Protectionでブロックされる。
+
+### 使い方
+
+- **G キー**: 音声チャットセッション開始/終了
+- **スペースキー長押し**: Push-to-talk（録音）、離すと送信
+- 会話の流れで視覚情報が必要な場合、Grokが自律的にカメラを使って応答
+
+### ボイス設定
+
+`rover.conf` の `[XAI]` セクションで変更可能:
+
+| 設定 | 説明 | 選択肢 |
+|---|---|---|
+| Voice | 音声 | Eve, Ara, Rex, Sal, Leo |
+| Instructions | キャラ設定 | 自由記述 |
+
 ---
 
 ## 新しいOS対応で変更した点まとめ
