@@ -80,7 +80,8 @@ function startVoiceChat() {
             } else if (data.type === 'response.output_audio_transcript.delta') {
                 appendTranscript(data.delta, 'ai');
             } else if (data.type === 'response.output_audio_transcript.done') {
-                // Final transcript received
+                // Final transcript received, reset so next response gets a new div
+                voiceChatCurrentAiMsg = null;
             } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
                 setTranscript(data.transcript, 'user');
             } else if (data.type === 'error') {
@@ -239,14 +240,19 @@ function syncVoiceChatUI() {
     }
 }
 
+var voiceChatCurrentAiMsg = null;
+
 function appendTranscript(text, role) {
     var container = $("#voiceChatTranscript");
-    var lastEntry = container.find("." + role + "-msg:last");
-    if (lastEntry.length && role === 'ai') {
-        lastEntry.append(text);
+    if (role === 'ai' && voiceChatCurrentAiMsg) {
+        voiceChatCurrentAiMsg.append(text);
     } else {
         var prefix = role === 'user' ? 'You: ' : role === 'ai' ? 'Watney: ' : '';
-        container.append('<div class="' + role + '-msg">' + prefix + text + '</div>');
+        var newMsg = $('<div class="' + role + '-msg">' + prefix + text + '</div>');
+        container.append(newMsg);
+        if (role === 'ai') {
+            voiceChatCurrentAiMsg = newMsg;
+        }
     }
     container.scrollTop(container[0].scrollHeight);
 }
