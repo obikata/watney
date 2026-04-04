@@ -130,7 +130,7 @@ async def testVision(request):
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "grok-2-vision-latest",
+                    "model": "grok-2-vision-1212",
                     "messages": [{
                         "role": "user",
                         "content": [
@@ -218,7 +218,7 @@ async def voiceChatProxy(request):
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": "grok-2-vision-latest",
+                            "model": "grok-2-vision-1212",
                             "messages": [{
                                 "role": "user",
                                 "content": [
