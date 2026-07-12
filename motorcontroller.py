@@ -117,6 +117,19 @@ class MotorController:
 
         return int(leftDC), int(rightDC)
 
+    def setMotorDC(self, leftDC, rightDC):
+        """Set motor duty cycles directly. Values between -100 and 100."""
+        leftActive = self.leftMotor.setMotion(int(leftDC))
+        rightActive = self.rightMotor.setMotion(int(rightDC))
+        if leftActive or rightActive:
+            self.gpio.write(self.enablePin, pigpio.HIGH)
+            self.audioManager.lowerVolume(self.audioToken)
+            Events.getInstance().fireMotionOn()
+        else:
+            self.gpio.write(self.enablePin, pigpio.LOW)
+            self.audioManager.restoreVolume(self.audioToken)
+            Events.getInstance().fireMotionOff()
+
     def setBearing(self, bearing, slow):
         if bearing not in self.validBearings:
             raise ValueError("Invalid bearing: {}".format(bearing))

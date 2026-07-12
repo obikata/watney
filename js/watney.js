@@ -382,6 +382,10 @@ function doHeartbeat() {
         if (data.InvalidState) {
             doInitialSet = true;
         }
+
+        if (typeof updateTrackingUI === "function" && data.AprilTagTracking !== undefined) {
+            updateTrackingUI(data.AprilTagTracking, data.AprilTagDetection, data.AprilTagPatrol);
+        }
     }).always(function () {
         setTimeout(doHeartbeat, 1000);
     });

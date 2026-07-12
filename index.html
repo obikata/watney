@@ -18,7 +18,8 @@
     <script type="text/javascript" src="js/janus.js"></script>
     <script type="text/javascript" src="js/watney_janus.js"></script>
     <script type="text/javascript" src="js/watney.js"></script>
-    <script type="text/javascript" src="js/voice_chat.js"></script>
+    <script type="text/javascript" src="js/gamepad.js?v=4"></script>
+    <script type="text/javascript" src="js/voice_agent.js"></script>
 </head>
 
 <body style="margin: 0; background-color: black">
@@ -39,8 +40,8 @@
             <div id="micButton" title="Local mic on/off. Push-to-talk (V)" class="wButton">
                 <i class="material-icons">mic_none</i>
             </div>
-            <div id="voiceChatButton" title="Voice Chat with Grok (G)" class="wButton" onclick="startVoiceChat()">
-                <i class="material-icons">record_voice_over</i>
+            <div id="voiceCommandButton" title="Voice Agent (G)" class="wButton" onclick="toggleVoiceCommand()">
+                <i class="material-icons" style="font-size:16px;width:20px;text-align:center;">hearing_disabled</i>
             </div>
             <div id="volumeSlider" class="wButton noHover" title="Remote Volume (-/+)">
                 <i class="material-icons">
@@ -69,16 +70,24 @@
         <p>Are you sure you want to restart Watney?</p>
     </div>
     <div id="info" tabindex="-1" style="display: none">
-        <pre>Controls:
+        <pre>Keyboard:
     Arrow keys: move the rover
     Shift: slow movement
     A: look up
     Z: look down
     S: Text to speech
     V: Push-to-talk
-    G: Voice Chat on/off (Grok)
-    Space: Push-to-talk (Voice Chat)
-    L: Headlights</pre>
+    G: Voice Agent on/off (Grok)
+    Space: Push-to-talk (Voice Agent)
+    L: Headlights
+
+PS4 Controller:
+    Left stick: move the rover
+    Right stick: camera up/down
+    L1: slow movement
+    X button: Headlights
+    Triangle: AprilTag tracking on/off
+    Circle: AprilTag patrol on/off</pre>
     </div>
     <div id="wifiInfo" tabindex="-1">
         <div>

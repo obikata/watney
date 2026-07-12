@@ -9,25 +9,34 @@ class Motor:
         self.__initMotor()
 
     def __initMotor(self):
-        self.gpio.set_PWM_frequency(self.forwardPin, self.pwmFrequency)
-        self.gpio.set_PWM_range(self.forwardPin, 100)
-        self.gpio.set_PWM_frequency(self.reversePin, self.pwmFrequency)
-        self.gpio.set_PWM_range(self.reversePin, 100)
+        import pigpio
+        self.__pigpio = pigpio
         self.stop()
 
+    def __pinLow(self, pin):
+        self.gpio.set_PWM_dutycycle(pin, 0)
+        self.gpio.set_mode(pin, self.__pigpio.OUTPUT)
+        self.gpio.write(pin, 0)
+
+    def __pinPWM(self, pin, dutyCycle):
+        self.gpio.set_PWM_frequency(pin, self.pwmFrequency)
+        self.gpio.set_PWM_range(pin, 100)
+        self.gpio.set_PWM_dutycycle(pin, dutyCycle)
+
     def stop(self):
-        self.gpio.set_PWM_dutycycle(self.forwardPin, 0)
-        self.gpio.set_PWM_dutycycle(self.reversePin, 0)
+        self.__pinLow(self.forwardPin)
+        self.__pinLow(self.reversePin)
 
     def setMotion(self, dutyCycle):
         self.stop()
         if dutyCycle != 0:
             trimmedDutyCycle = dutyCycle * self.trimOffset
-            # print(self.name + ": " + str(trimmedDutyCycle))
             if trimmedDutyCycle > 0:
-                self.gpio.set_PWM_dutycycle(self.forwardPin, trimmedDutyCycle)
+                self.__pinLow(self.reversePin)
+                self.__pinPWM(self.forwardPin, trimmedDutyCycle)
             else:
-                self.gpio.set_PWM_dutycycle(self.reversePin, trimmedDutyCycle * -1)
+                self.__pinLow(self.forwardPin)
+                self.__pinPWM(self.reversePin, trimmedDutyCycle * -1)
             return True
         else:
             return False

@@ -20,6 +20,7 @@ import json
 from januseventhandler import JanusEventHandler
 from tts import TTSSpeaker
 from startupSequence import StartupSequenceController
+from apriltag_tracker import AprilTagTracker
 
 routes = web.RouteTableDef()
 
@@ -36,6 +37,7 @@ audioManagerThread = None
 janusEventHandler = None
 offCharger = None
 xaiConfig = None
+aprilTagTracker = None
 
 @routes.get("/")
 async def getPageHTML(request):
@@ -51,6 +53,8 @@ async def setCommand(request):
 
     if newBearing in MotorController.validBearings:
         motorController.setBearing(newBearing, newSlow)
+        if aprilTagTracker and aprilTagTracker.isRunning() and newBearing != "0":
+            aprilTagTracker.onManualCommand()
     else:
         print("Invalid bearing {}".format(newBearing))
         return web.Response(status=400, text="Invalid")
@@ -85,6 +89,64 @@ async def sendTTS(request):
     return web.Response(text="OK")
 
 
+_pendingSpeech = []  # ブラウザに再生させるキュー
+
+def sayJapanese(text):
+    """ブラウザで再生させるためにキューに入れる"""
+    _pendingSpeech.append(text)
+    print(f"TTS queued: '{text}'", flush=True)
+
+
+@routes.post("/ttsSpeak")
+async def ttsSpeak(request):
+    """xAI TTS APIで音声生成してmp3をブラウザに返す"""
+    import requests as req
+
+    obj = await request.json()
+    text = obj.get("text", "")
+    if not text:
+        return web.Response(status=400, text="No text")
+
+    if not xaiConfig or not xaiConfig.get("ApiKey"):
+        return web.Response(status=503, text="No API key")
+
+    voice = xaiConfig.get("Voice", "Rex")
+    try:
+        resp = req.post(
+            "https://api.x.ai/v1/tts",
+            headers={
+                "Authorization": f"Bearer {xaiConfig['ApiKey']}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "text": text,
+                "voice_id": voice.lower(),
+                "language": "ja"
+            },
+            timeout=10
+        )
+        if resp.status_code == 200:
+            print(f"TTS: '{text}'", flush=True)
+            return web.Response(body=resp.content, content_type="audio/mpeg")
+        else:
+            print(f"TTS API error: {resp.status_code} {resp.text}", flush=True)
+            return web.Response(status=500, text=resp.text)
+    except Exception as e:
+        print(f"TTS error: {e}", flush=True)
+        return web.Response(status=500, text=str(e))
+
+
+@routes.get("/ttsPending")
+async def ttsPending(request):
+    """ブラウザがポーリングして再生すべきテキストを取得"""
+    global _pendingSpeech
+    if _pendingSpeech:
+        texts = _pendingSpeech[:]
+        _pendingSpeech = []
+        return web.json_response({"texts": texts})
+    return web.json_response({"texts": []})
+
+
 @routes.post("/setVolume")
 async def setVolume(request):
     volumeObj = await request.json()
@@ -93,9 +155,110 @@ async def setVolume(request):
     return web.Response(text="OK")
 
 
+_batteryWarned = False
+
+@routes.post("/voiceAgentLook")
+async def voiceAgentLook(request):
+    """カメラ画像をGrok Visionで分析"""
+    import requests as req
+
+    if not xaiConfig or not xaiConfig.get("ApiKey"):
+        return web.json_response({"description": "APIキーがない"}, status=503)
+
+    obj = await request.json()
+    image_base64 = obj.get("image", "")
+    question = obj.get("question", "何が見える？")
+
+    try:
+        resp = req.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {xaiConfig['ApiKey']}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "grok-4-fast",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                        {"type": "text", "text": f"あなたはワトニーというロボットローバーです。カメラで見えているものを日本語で短く（20文字以内）答えてください。質問：{question}"}
+                    ]
+                }],
+                "temperature": 0.7
+            },
+            timeout=15
+        )
+        result = resp.json()
+        description = result["choices"][0]["message"]["content"].strip()
+        print(f"Vision: '{description}'", flush=True)
+        return web.json_response({"description": description})
+    except Exception as e:
+        print(f"Vision error: {e}", flush=True)
+        return web.json_response({"description": "よく見えなかった"})
+
+
+@routes.get("/getApiKey")
+async def getApiKey(request):
+    """ローカルネットワーク内でのみAPIキーを提供"""
+    if xaiConfig and xaiConfig.get("ApiKey"):
+        return web.json_response({"key": xaiConfig["ApiKey"]})
+    return web.json_response({"key": ""}, status=503)
+
+
+@routes.post("/voiceAgentAction")
+async def voiceAgentAction(request):
+    """Voice Agentのfunction callを実行"""
+    import threading, time as _time
+
+    obj = await request.json()
+    action = obj.get("action")
+    args = obj.get("args", {})
+
+    print(f"Voice Agent action: {action} {args}", flush=True)
+
+    if action == "move":
+        direction_map = {"forward": "n", "backward": "s", "left": "w", "right": "e", "stop": "0"}
+        bearing = direction_map.get(args.get("direction"), "0")
+        motorController.setBearing(bearing, True)
+
+    elif action == "spin":
+        import random
+        speed = 60
+        if random.choice([True, False]):
+            motorController.setMotorDC(speed, -speed)
+        else:
+            motorController.setMotorDC(-speed, speed)
+
+    elif action == "patrol":
+        if aprilTagTracker:
+            if args.get("action") == "start":
+                aprilTagTracker.startPatrol([3, 8, 11, 13])
+            else:
+                aprilTagTracker.stop()
+
+    elif action == "lights":
+        pass  # TODO: toggle lights
+
+    return web.json_response({"status": "ok"})
+
+
 @routes.post("/heartbeat")
 async def onHeartbeat(request):
+    global _batteryWarned
     stats = heartbeat.onHeartbeatReceived()
+    # バッテリー低下通知
+    batteryPercent = stats.get("BatteryPercent", -1)
+    if batteryPercent >= 0 and batteryPercent <= 20 and not _batteryWarned:
+        _batteryWarned = True
+        sayJapanese("ワトニーそろそろ疲れてきたよ。充電して！")
+    elif batteryPercent > 30:
+        _batteryWarned = False
+    if aprilTagTracker:
+        stats["AprilTagTracking"] = aprilTagTracker.isRunning()
+        stats["AprilTagDetection"] = aprilTagTracker.getLastDetection()
+        status = aprilTagTracker.getStatus()
+        stats["AprilTagPatrol"] = status if (status["patrolling"] or status["completed"]) else None
     return web.json_response(stats)
 
 @routes.post("/lights")
@@ -107,6 +270,231 @@ async def onLights(request):
     else:
         lightsController.lightsOff()
     return web.Response(text="OK")
+
+
+@routes.post("/apriltagTrack")
+async def apriltagTrack(request):
+    trackObj = await request.json()
+    enable = bool(trackObj.get('enable', False))
+    if aprilTagTracker is None:
+        return web.Response(status=503, text="AprilTag tracker not available")
+    if enable:
+        aprilTagTracker.start()
+    else:
+        aprilTagTracker.stop()
+    return web.json_response({"tracking": aprilTagTracker.isRunning()})
+
+
+@routes.post("/apriltagPatrol")
+async def apriltagPatrol(request):
+    if aprilTagTracker is None:
+        return web.Response(status=503, text="AprilTag tracker not available")
+    patrolObj = await request.json()
+    enable = bool(patrolObj.get('enable', False))
+    if enable:
+        route = patrolObj.get('route', [3, 13, 8])
+        aprilTagTracker.startPatrol(route)
+    else:
+        aprilTagTracker.stop()
+    return web.json_response(aprilTagTracker.getStatus())
+
+
+@routes.post("/apriltagFrame")
+async def apriltagFrame(request):
+    if aprilTagTracker is None or not aprilTagTracker.isRunning():
+        return web.Response(status=200, text="Not tracking")
+    frameObj = await request.json()
+    imageBase64 = frameObj.get('image', '')
+    if imageBase64:
+        aprilTagTracker.processFrame(imageBase64)
+    return web.Response(text="OK")
+
+
+@routes.post("/voiceCommand")
+async def voiceCommand(request):
+    """Receive audio from browser, send to xAI STT, execute command."""
+    global xaiConfig
+    if not xaiConfig or not xaiConfig.get("ApiKey"):
+        return web.json_response({"error": "xAI API key not configured"}, status=503)
+
+    import requests as req
+    import tempfile
+
+    reader = await request.multipart()
+    field = await reader.next()
+    audio_data = await field.read()
+
+    # Send to xAI STT
+    try:
+        resp = req.post(
+            "https://api.x.ai/v1/stt",
+            headers={"Authorization": f"Bearer {xaiConfig['ApiKey']}"},
+            files={"file": ("audio.webm", audio_data, "audio/webm")},
+            data=[("language", "ja")]
+        )
+        result = resp.json()
+        transcript = result.get("text", "").strip()
+        print(f"Voice command: '{transcript}'", flush=True)
+    except Exception as e:
+        print(f"STT error: {e}", flush=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+    # コマンド判定（Grok APIで意図を解釈）
+    action = await interpretCommand(transcript, xaiConfig['ApiKey'])
+    if action:
+        executeVoiceAction(action)
+
+    return web.json_response({"transcript": transcript, "action": action})
+
+
+async def interpretCommand(text, apiKey):
+    """Grok APIでユーザーの意図を解釈してコマンドを返す"""
+    import requests as req
+
+    valid_actions = ["n", "s", "e", "w", "0", "patrol_start", "patrol_stop", "lights", "greet", "spin", "none"]
+
+    prompt = f"""あなたはロボットローバー「ワトニー」の音声コマンドインタープリタです。
+音声認識の結果を受け取り、ユーザーの意図を推測してコマンドを1つだけ返してください。
+音声認識は不正確な場合があります（例:「前進」→「全身」、「停止」→「投資」など）。
+音が似ている言葉は元の意図を推測してください。
+
+コマンドリスト:
+- "n" : 前に進む（前、進め、前進、全身、行け、ゴー、go）
+- "s" : 後ろに下がる（後ろ、バック、下がれ、後退）
+- "e" : 右に曲がる（右、右折、ライト方向ではない）
+- "w" : 左に曲がる（左、左折）
+- "0" : 停止する（止まれ、ストップ、止まって、止めて）
+- "patrol_start" : パトロールを開始する（パトロール、巡回開始、見回り、見回って）
+- "patrol_stop" : パトロールを停止する（パトロール停止、巡回やめて、巡回止めて、もういい）
+- "lights" : ライトのON/OFF（ライト、電気、明かり、照明）
+- "greet" : ワトニーへの呼びかけ・挨拶（ワトニー、おーい、ハロー、元気？、こんにちは）
+- "spin" : その場でぐるぐる回る（ぐるぐる、回って、回れ、スピン）
+- "none" : どのコマンドにも該当しない
+
+ユーザーの発話（音声認識結果）: 「{text}」
+
+コマンドのみを返してください（例: n）:"""
+
+    try:
+        resp = req.post(
+            "https://api.x.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {apiKey}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "grok-3-mini-fast",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0
+            },
+            timeout=5
+        )
+        result = resp.json()
+        answer = result["choices"][0]["message"]["content"].strip().lower()
+        # 有効なアクションのみ返す
+        if answer in valid_actions and answer != "none":
+            print(f"Grok interpreted '{text}' → {answer}", flush=True)
+            return answer
+        print(f"Grok interpreted '{text}' → none", flush=True)
+        return None
+    except Exception as e:
+        print(f"Grok API error: {e}", flush=True)
+        # フォールバック: キーワードマッチ
+        return matchVoiceCommand(text)
+
+
+def matchVoiceCommand(text):
+    """日本語テキストをコマンドにマッピング（長いキーワードを優先）"""
+    text = text.lower().strip()
+    # (keyword, action) のリスト - 長いものを先にマッチさせる
+    keywords = [
+        # パトロール（停止を先に判定）
+        ("パトロール停止", "patrol_stop"),
+        ("パトロールストップ", "patrol_stop"),
+        ("ぱとろーる停止", "patrol_stop"),
+        ("パトロール止めて", "patrol_stop"),
+        ("パトロールやめて", "patrol_stop"),
+        ("パトロール開始", "patrol_start"),
+        ("パトロールスタート", "patrol_start"),
+        ("ぱとろーる開始", "patrol_start"),
+        ("パトロール", "patrol_start"),
+        # 移動
+        ("前に進め", "n"),
+        ("前進", "n"),
+        ("ぜんしん", "n"),
+        ("進め", "n"),
+        ("すすめ", "n"),
+        ("前", "n"),
+        ("まえ", "n"),
+        ("後ろ", "s"),
+        ("うしろ", "s"),
+        ("バック", "s"),
+        ("ばっく", "s"),
+        ("後退", "s"),
+        ("右", "e"),
+        ("みぎ", "e"),
+        ("左", "w"),
+        ("ひだり", "w"),
+        # 停止
+        ("止まれ", "0"),
+        ("とまれ", "0"),
+        ("ストップ", "0"),
+        ("すとっぷ", "0"),
+        ("止まって", "0"),
+        ("停止", "0"),
+        ("ていし", "0"),
+        ("止まる", "0"),
+        # ライト
+        ("ライトつけて", "lights"),
+        ("電気つけて", "lights"),
+        ("電気消して", "lights"),
+        ("ライト", "lights"),
+        ("らいと", "lights"),
+        ("電気", "lights"),
+        ("でんき", "lights"),
+    ]
+    for kw, action in keywords:
+        if kw in text:
+            return action
+    return None
+
+
+def executeVoiceAction(action):
+    """コマンドを実行"""
+    global motorController, aprilTagTracker
+    if action in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
+        motorController.setBearing(action, True)
+        # 1秒後に停止
+        import threading
+        def stopAfter():
+            import time
+            time.sleep(1.0)
+            motorController.setBearing("0", False)
+        threading.Thread(target=stopAfter, daemon=True).start()
+    elif action == "0":
+        motorController.setBearing("0", False)
+    elif action == "patrol_start":
+        if aprilTagTracker:
+            aprilTagTracker.startPatrol([3, 8, 11, 13])
+    elif action == "patrol_stop":
+        if aprilTagTracker:
+            aprilTagTracker.stop()
+    elif action == "lights":
+        # Toggle lights via existing mechanism
+        pass
+    elif action == "greet":
+        import random
+        greetings = ["はーい", "なあに？", "ここだよ！", "ワトニーだよ！", "よんだ？"]
+        sayJapanese(random.choice(greetings))
+    elif action == "spin":
+        import threading
+        sayJapanese("ぐるぐるー！")
+        def doSpin():
+            import time
+            motorController.setMotorDC(60, -60)
+            time.sleep(3.0)
+            motorController.setMotorDC(0, 0)
+        threading.Thread(target=doSpin, daemon=True).start()
 
 
 @routes.get("/voiceChat")
@@ -363,6 +751,14 @@ if __name__ == "__main__":
 
     offCharger = OffCharger(config, tts, motorController)
 
+    if config.has_section("APRILTAG"):
+        try:
+            aprilTagTracker = AprilTagTracker(config, motorController)
+            print("AprilTag tracker initialized")
+        except Exception as e:
+            print(f"AprilTag tracker not available: {e}")
+            aprilTagTracker = None
+
     janus = ExternalProcess(videoConfig["JanusStartCommand"], False, False, "janus.log")
     videoStream = ExternalProcess(videoConfig["GStreamerStartCommand"], True, False, "video.log")
 
@@ -382,6 +778,8 @@ if __name__ == "__main__":
     except:
         pass
     finally:
+        if aprilTagTracker and aprilTagTracker.isRunning():
+            aprilTagTracker.stop()
         servoController.stop()
         lightsController.stop()
         gpio.stop()
