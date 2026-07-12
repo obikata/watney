@@ -320,13 +320,29 @@
                 if (!isMuted) playAudioDelta(event.delta);
                 break;
             case "response.audio_transcript.delta":
-                if (!isMuted) watneyText += event.delta;
+                watneyText += event.delta;
                 break;
             case "response.audio_transcript.done":
-                if (!isMuted && watneyText) addChatMessage("watney", watneyText);
+                if (watneyText) addChatMessage("watney", watneyText);
                 watneyText = "";
                 break;
             case "response.done":
+                // response.doneからワトニーの返答テキストを抽出
+                if (!isMuted && event.response && event.response.output) {
+                    for (var oi = 0; oi < event.response.output.length; oi++) {
+                        var outputItem = event.response.output[oi];
+                        if (outputItem.content) {
+                            for (var ci = 0; ci < outputItem.content.length; ci++) {
+                                var c = outputItem.content[ci];
+                                if (c.transcript) {
+                                    addChatMessage("watney", c.transcript);
+                                } else if (c.text) {
+                                    addChatMessage("watney", c.text);
+                                }
+                            }
+                        }
+                    }
+                }
                 if (isMuted) {
                     muteResponseId = null;
                     deleteAllConversationItems();
